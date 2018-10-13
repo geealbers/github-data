@@ -53,8 +53,17 @@ do
 done
 
 
-# Create a temporary file with variable array
-# of all repository names generated in the step above
+# The sections below follow the same pattern:
+#
+# 1. Create a temporary file with variable array
+# of repository names generated in the step above
+#
+# 2. Loop through that array, make call to GitHub API
+# for information, and create new array of objects
+
+
+# Get contributor names and contribution counts
+# for all museum repositories
 
 echo "REPO_NAMES=(" >> REPO_NAMES.txt
 
@@ -64,18 +73,34 @@ echo ")" >> REPO_NAMES.txt
 
 source REPO_NAMES.txt
 
-
-# Loop through repository names, make call to GitHub API
-# for contributor information, create new array of
-# contributor objects
-
 for i in "${REPO_NAMES[@]}"
 do
 
   curl -H 'Authorization: token '$TOKEN'' "https://api.github.com/repos/$i/contributors" | jq --arg repo "$i" '{
     name_full: $repo,
     contributor_count: (length),
-    contributor: [.[] | {name: .login, contributions: .contributions}]}' >> PEOPLE.txt
+    contributor: [.[] | {name: .login, contributions: .contributions}]}' >> NAMES.txt
+
+done
+
+
+# Get the parent information for any museum
+# repository identified as a Fork
+
+echo "REPO_FORKS=(" >> REPO_FORKS.txt
+
+cat REPOS.txt | jq --slurp ".[] | if .type == \"Fork\" then .name_full else empty end" >> REPO_FORKS.txt
+
+echo ")" >> REPO_FORKS.txt
+
+source REPO_FORKS.txt
+
+for i in "${REPO_FORKS[@]}"
+do
+
+  curl -H 'Authorization: token '$TOKEN'' "https://api.github.com/repos/$i" | jq --arg repo "$i" '{
+    name_full: $repo,
+    parent: .parent.full_name}' >> FORKS.txt
 
 done
 
@@ -86,7 +111,7 @@ done
 
 NOW=$(date +%F-%s)
 
-jq --slurp --sort-keys '[group_by(.name_full) | .[] | add ]' PEOPLE.txt REPOS.txt >> GITHUB-DATA-$NOW.json
+jq --slurp --sort-keys '[group_by(.name_full) | .[] | add ]' NAMES.txt REPOS.txt FORKS.txt >> GITHUB-DATA-$NOW.json
 
 echo "Your JSON file is ready! --> GITHUB-DATA-$NOW.json"
 
@@ -95,7 +120,6 @@ echo "Your JSON file is ready! --> GITHUB-DATA-$NOW.json"
 
 rm -f REPOS.txt
 rm -f REPO_NAMES.txt
-rm -f PEOPLE.txt
-
-
-
+rm -f NAMES.txt
+rm -f REPO_FORKS.txt
+rm -f FORKS.txt
